@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Puri FinC Dashboard Engine</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-4 md:p-8">
+
+  <div class="max-w-4xl mx-auto space-y-6">
+    
+    <div class="flex justify-between items-center bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-chart-pie text-emerald-400"></i>
+          Puri FinC 17 &bull; Real-Time Dashboard
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">Monitoring status pembayaran iuran warga per wilayah blok secara terpusat.</p>
+      </div>
+      <button onclick="muatDataDashboard()" id="btn-refresh" class="bg-slate-700 hover:bg-slate-600 text-white p-2.5 rounded-xl transition border border-slate-600 cursor-pointer">
+        <i id="icon-refresh" class="fa-solid fa-arrows-rotate"></i>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Wilayah</p>
+        <p id="kpi-blok" class="text-2xl font-black text-white mt-1">-</p>
+      </div>
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <p class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Total Rumah Lunas</p>
+        <p id="kpi-lunas" class="text-2xl font-black text-emerald-400 mt-1">-</p>
+      </div>
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <p class="text-[10px] uppercase font-bold text-rose-400 tracking-wider">Belum Bayar</p>
+        <p id="kpi-belum" class="text-2xl font-black text-rose-400 mt-1">-</p>
+      </div>
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <p class="text-[10px] uppercase font-bold text-blue-400 tracking-wider">Total Records</p>
+        <p id="kpi-total" class="text-2xl font-black text-blue-400 mt-1">-</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl relative min-h-[350px]">
+      <h3 class="text-sm font-bold text-white mb-4 uppercase tracking-wide text-slate-300">Proporsi Pembayaran Per Blok</h3>
+      
+      <div id="loading-overlay" class="absolute inset-0 bg-slate-800/90 rounded-2xl flex flex-col items-center justify-center gap-2 z-10">
+        <i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-400"></i>
+        <p class="text-xs text-slate-400 font-medium">Menarik data dari cloud...</p>
+      </div>
+
+      <div class="w-full h-80">
+        <canvas id="canvasGrafik"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxQZqdJCRBHXWJkPMW9yUppIMB_fpUQw3zWUUpNsdn-fPGgeMJbBLVUykFebW_yZwyNCA/exec"; 
+    let instanceGrafik = null;
+
+    window.onload = function() {
+      muatDataDashboard();
+    };
+
+    async function muatDataDashboard() {
+      document.getElementById('loading-overlay').classList.remove('hidden');
+      document.getElementById('icon-refresh').classList.add('fa-spin');
+      
+      try {
+        const response = await fetch(`${API_URL}?kunci=PuriFinC17SecureToken2026`);
+        const res = await response.json();
+        
+        if (res.sukses) {
+          renderKomponenDashboard(res);
+        } else {
+          alert("Gagal memuat data: " + res.pesan);
+          matikanLoading();
+        }
+      } catch (err) {
+        alert("Gagal terhubung ke API Cloud: " + err.toString());
+        matikanLoading();
+      }
+    }
+
+    function matikanLoading() {
+      document.getElementById('loading-overlay').classList.add('hidden');
+      document.getElementById('icon-refresh').classList.remove('fa-spin');
+    }
+
+    function renderKomponenDashboard(res) {
+      document.getElementById('kpi-blok').innerText = res.kpi.totalBlok + " Blok";
+      document.getElementById('kpi-lunas').innerText = res.kpi.totalLunas + " Rumah";
+      document.getElementById('kpi-belum').innerText = res.kpi.totalBelumBayar + " Rumah";
+      document.getElementById('kpi-total').innerText = res.kpi.totalData + " Baris";
+
+      if (instanceGrafik) {
+        instanceGrafik.destroy();
+      }
+
+      const ctx = document.getElementById('canvasGrafik').getContext('2d');
+      
+      instanceGrafik = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: res.labels,
+          datasets: [
+            {
+              label: 'Belum Bayar',
+              data: res.belumBayar,
+              backgroundColor: '#ef4444',
+              borderRadius: 6
+            },
+            {
+              label: 'Lunas',
+              data: res.lunas,
+              backgroundColor: '#10b981',
+              borderRadius: 6
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              stacked: true,
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', font: { weight: 'bold' } }
+            },
+            y: {
+              stacked: true,
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', stepSize: 5 }
+            }
+          },
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { color: '#f8fafc', font: { family: 'sans-serif', size: 12, weight: 'bold' } }
+            }
+          }
+        }
+      });
+
+      matikanLoading();
+    }
+  </script>
+</body>
+</html>
